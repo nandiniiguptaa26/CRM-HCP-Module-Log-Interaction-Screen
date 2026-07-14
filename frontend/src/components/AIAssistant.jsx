@@ -10,12 +10,21 @@ import {
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import SendIcon from "@mui/icons-material/Send";
 
-function AIAssistant({
-  chat,
+import { useSelector, useDispatch } from "react-redux";
+import {
   setChat,
+} from "../redux/interactionSlice";
+
+function AIAssistant({
   sendToAI,
   aiResponse,
 }) {
+
+  const dispatch = useDispatch();
+
+  const chat = useSelector(
+    (state) => state.interaction.chat
+  );
 
   const [messages, setMessages] = useState([
     {
@@ -26,7 +35,7 @@ function AIAssistant({
   ]);
 
   const handleSend = async () => {
-  console.log("handleSend called");
+
     if (!chat.trim()) return;
 
     const userMessage = chat;
@@ -41,7 +50,7 @@ function AIAssistant({
 
     await sendToAI();
 
-    setChat("");
+    dispatch(setChat(""));
   };
 
   useEffect(() => {
@@ -94,9 +103,7 @@ function AIAssistant({
             }}
           />
 
-          <Typography
-            fontWeight={700}
-          >
+          <Typography fontWeight={700}>
             AI Assistant
           </Typography>
 
@@ -148,9 +155,7 @@ function AIAssistant({
                 py: 1.5,
               }}
             >
-
               {msg.text}
-
             </Box>
 
           </Box>
@@ -176,7 +181,9 @@ function AIAssistant({
           size="small"
           placeholder="Example: Met Dr Sharma today at 3 PM. Discussed diabetes medicine..."
           value={chat}
-          onChange={(e) => setChat(e.target.value)}
+          onChange={(e) =>
+            dispatch(setChat(e.target.value))
+          }
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               handleSend();
@@ -189,7 +196,6 @@ function AIAssistant({
           sx={{
             background: "#1976d2",
             color: "#fff",
-
             "&:hover": {
               background: "#1565c0",
             },

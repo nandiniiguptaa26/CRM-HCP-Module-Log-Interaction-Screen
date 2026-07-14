@@ -20,7 +20,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # ==========================================================
 # Database
 # ==========================================================
@@ -39,11 +38,13 @@ def get_db():
 
 @app.get("/")
 def home():
-    return {"message": "Backend Running"}
+    return {
+        "message": "AI First CRM Backend Running"
+    }
 
 
 # ==========================================================
-# Save Interaction
+# MANUAL SAVE (Keep this)
 # ==========================================================
 
 @app.post("/interactions")
@@ -62,7 +63,7 @@ def create_interaction(
 
 
 # ==========================================================
-# Get All
+# GET ALL
 # ==========================================================
 
 @app.get("/interactions")
@@ -73,7 +74,7 @@ def get_interactions(
 
 
 # ==========================================================
-# Update
+# UPDATE
 # ==========================================================
 
 @app.put("/interactions/{interaction_id}")
@@ -104,16 +105,9 @@ def update_interaction(
     interaction.follow_up = data.follow_up
     interaction.materials_shared = data.materials_shared
     interaction.samples_distributed = data.samples_distributed
-    interaction.materials_shared = data.materials_shared
-
-    interaction.samples_distributed = data.samples_distributed
-
     interaction.sentiment = data.sentiment
-
     interaction.outcomes = data.outcomes
-
     interaction.follow_up_actions = data.follow_up_actions
-
 
     db.commit()
     db.refresh(interaction)
@@ -122,11 +116,11 @@ def update_interaction(
 
 
 # ==========================================================
-# Search
+# SEARCH
 # ==========================================================
 
 @app.get("/interactions/search/{hcp_name}")
-def search_hcp(
+def search_hcp_api(
     hcp_name: str,
     db: Session = Depends(get_db)
 ):
@@ -141,17 +135,87 @@ def search_hcp(
 
 
 # ==========================================================
-# AI EXTRACT (NEW)
+# AI FIRST LOG INTERACTION
+# Extract -> Summary -> Followup -> Save
+# ==========================================================
+
+@app.post("/ai/log")
+def ai_log(data: dict):
+
+    result = graph.invoke({
+
+        "action": "extract",
+
+        "input": {
+            "query": data["query"]
+        }
+
+    })
+
+    return result["output"]
+
+
+# ==========================================================
+# AI EXTRACT ONLY
 # ==========================================================
 
 @app.post("/ai/extract")
 def ai_extract(data: dict):
 
     result = graph.invoke({
+
         "action": "extract",
+
         "input": {
             "query": data["query"]
         }
+
+    })
+
+    return result["output"]
+
+
+# ==========================================================
+# AI EDIT
+# ==========================================================
+
+@app.put("/ai/edit")
+def ai_edit(data: dict):
+
+    result = graph.invoke({
+
+        "action": "edit",
+
+        "input": {
+
+            "interaction_id": data["interaction_id"],
+
+            "updates": data["updates"]
+
+        }
+
+    })
+
+    return result["output"]
+
+
+# ==========================================================
+# AI SEARCH
+# ==========================================================
+
+@app.get("/ai/search/{hcp_name}")
+def ai_search(hcp_name: str):
+
+    result = graph.invoke({
+
+        "action": "search",
+
+        "input": {
+
+            "hcp_name": hcp_name
+
+        }
+
     })
 
     return result["output"]
@@ -165,10 +229,15 @@ def ai_extract(data: dict):
 def ai_summary(data: dict):
 
     result = graph.invoke({
+
         "action": "summary",
+
         "input": {
+
             "discussion": data["discussion"]
+
         }
+
     })
 
     return result["output"]
@@ -182,10 +251,15 @@ def ai_summary(data: dict):
 def ai_followup(data: dict):
 
     result = graph.invoke({
+
         "action": "followup",
+
         "input": {
+
             "discussion": data["discussion"]
+
         }
+
     })
 
     return result["output"]
@@ -199,10 +273,15 @@ def ai_followup(data: dict):
 def ai_chat(data: dict):
 
     result = graph.invoke({
+
         "action": "chat",
+
         "input": {
+
             "query": data["query"]
+
         }
+
     })
 
     return result["output"]

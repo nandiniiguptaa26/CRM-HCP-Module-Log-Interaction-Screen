@@ -172,7 +172,7 @@ Keep the summary concise.
 
 Interaction:
 
-{discussion}
+{discussion}CREATE DATABASE crm_hcp;
 """
 
 

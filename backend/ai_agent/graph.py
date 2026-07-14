@@ -12,9 +12,10 @@ from ai_agent.tools import (
     chat_assistant,
 )
 
-# ============================================================
+
+# =====================================================
 # STATE
-# ============================================================
+# =====================================================
 
 class AgentState(TypedDict):
     action: str
@@ -22,9 +23,9 @@ class AgentState(TypedDict):
     output: dict
 
 
-# ============================================================
+# =====================================================
 # ROUTER
-# ============================================================
+# =====================================================
 
 def router(state: AgentState):
 
@@ -33,58 +34,87 @@ def router(state: AgentState):
     if action == "extract":
         return "extract"
 
-    elif action == "log":
-        return "log"
-
     elif action == "edit":
         return "edit"
 
     elif action == "search":
         return "search"
 
-    elif action == "summary":
-        return "summary"
-
-    elif action == "followup":
-        return "followup"
-
-    else:
+    elif action == "chat":
         return "chat"
 
+    else:
+        return "extract"
 
-# ============================================================
-# EXTRACT NODE (NEW)
-# ============================================================
+
+# =====================================================
+# TOOL 1
+# Extract Interaction
+# =====================================================
 
 def extract_node(state: AgentState):
 
-    result = extract_interaction(
+    extracted = extract_interaction(
         state["input"]["query"]
     )
 
-    state["output"] = result
+    state["output"] = extracted
 
     return state
 
 
-# ============================================================
-# LOG NODE
-# ============================================================
+# =====================================================
+# TOOL 2
+# Generate Summary
+# =====================================================
+
+def summary_node(state: AgentState):
+
+    summary = summarize_interaction(
+        state["output"]["discussion"]
+    )
+
+    state["output"]["summary"] = summary
+
+    return state
+
+
+# =====================================================
+# TOOL 3
+# Generate Followup
+# =====================================================
+
+def followup_node(state: AgentState):
+
+    followup = suggest_followup(
+        state["output"]["discussion"]
+    )
+
+    state["output"]["follow_up"] = followup
+
+    return state
+
+
+# =====================================================
+# TOOL 4
+# Log Interaction
+# =====================================================
 
 def log_node(state: AgentState):
 
     result = log_interaction(
-        state["input"]
+        state["output"]
     )
 
-    state["output"] = result
+    state["output"]["database"] = result
 
     return state
 
 
-# ============================================================
-# EDIT NODE
-# ============================================================
+# =====================================================
+# TOOL 5
+# Edit Interaction
+# =====================================================
 
 def edit_node(state: AgentState):
 
@@ -92,7 +122,7 @@ def edit_node(state: AgentState):
 
     result = edit_interaction(
         data["interaction_id"],
-        data["updates"]
+        data["updates"],
     )
 
     state["output"] = result
@@ -100,9 +130,10 @@ def edit_node(state: AgentState):
     return state
 
 
-# ============================================================
-# SEARCH NODE
-# ============================================================
+# =====================================================
+# TOOL 6
+# Search HCP
+# =====================================================
 
 def search_node(state: AgentState):
 
@@ -110,48 +141,17 @@ def search_node(state: AgentState):
         state["input"]["hcp_name"]
     )
 
-    state["output"] = result
-
-    return state
-
-
-# ============================================================
-# SUMMARY NODE
-# ============================================================
-
-def summary_node(state: AgentState):
-
-    result = summarize_interaction(
-        state["input"]["discussion"]
-    )
-
     state["output"] = {
-        "summary": result
+        "results": result
     }
 
     return state
 
 
-# ============================================================
-# FOLLOWUP NODE
-# ============================================================
-
-def followup_node(state: AgentState):
-
-    result = suggest_followup(
-        state["input"]["discussion"]
-    )
-
-    state["output"] = {
-        "follow_up": result
-    }
-
-    return state
-
-
-# ============================================================
-# CHAT NODE
-# ============================================================
+# =====================================================
+# TOOL 7
+# Chat Assistant
+# =====================================================
 
 def chat_node(state: AgentState):
 
@@ -166,39 +166,50 @@ def chat_node(state: AgentState):
     return state
 
 
-# ============================================================
+# =====================================================
 # BUILD GRAPH
-# ============================================================
+# =====================================================
 
 builder = StateGraph(AgentState)
 
 builder.add_node("extract", extract_node)
-builder.add_node("log", log_node)
-builder.add_node("edit", edit_node)
-builder.add_node("search", search_node)
 builder.add_node("summary", summary_node)
 builder.add_node("followup", followup_node)
+builder.add_node("log", log_node)
+
+builder.add_node("edit", edit_node)
+builder.add_node("search", search_node)
 builder.add_node("chat", chat_node)
+
 
 builder.set_conditional_entry_point(
     router,
     {
         "extract": "extract",
-        "log": "log",
         "edit": "edit",
         "search": "search",
-        "summary": "summary",
-        "followup": "followup",
         "chat": "chat",
     },
 )
 
-builder.add_edge("extract", END)
+
+# =====================================================
+# Main AI Flow
+# =====================================================
+
+builder.add_edge("extract", "summary")
+builder.add_edge("summary", "followup")
+builder.add_edge("followup", "log")
 builder.add_edge("log", END)
+
+
+# =====================================================
+# Other Tools
+# =====================================================
+
 builder.add_edge("edit", END)
 builder.add_edge("search", END)
-builder.add_edge("summary", END)
-builder.add_edge("followup", END)
 builder.add_edge("chat", END)
+
 
 graph = builder.compile()
