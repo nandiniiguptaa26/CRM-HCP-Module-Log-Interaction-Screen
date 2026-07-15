@@ -18,9 +18,7 @@ class Interaction(Base):
     attendees = Column(String)
     discussion = Column(String)
 
-    # Materials
-    materials_shared = Column(String)
-    samples_distributed = Column(String)
+ 
 
     # AI Generated
     summary = Column(String)

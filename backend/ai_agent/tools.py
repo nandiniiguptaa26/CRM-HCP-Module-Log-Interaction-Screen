@@ -16,11 +16,10 @@ from ai_agent.prompts import (
     SUMMARY_PROMPT,
     FOLLOWUP_PROMPT,
     CHAT_PROMPT,
+    VALIDATION_PROMPT,
 )
 
-
 load_dotenv()
-
 
 # =====================================================
 # LLM CONFIGURATION
@@ -29,9 +28,8 @@ load_dotenv()
 llm = ChatGroq(
     model="llama-3.3-70b-versatile",
     api_key=os.getenv("GROQ_API_KEY"),
-    temperature=0
+    temperature=0,
 )
-
 
 # =====================================================
 # DATABASE
@@ -41,31 +39,16 @@ def get_db():
     return SessionLocal()
 
 
-
 # =====================================================
 # JSON CLEANER
 # =====================================================
 
 def clean_json_response(text):
 
-    """
-    Remove markdown and extract JSON
-    """
-
     text = text.strip()
 
-    text = text.replace(
-        "```json",
-        ""
-    )
-
-    text = text.replace(
-        "```",
-        ""
-    )
-
-
-    # find JSON object
+    text = text.replace("```json", "")
+    text = text.replace("```", "")
 
     match = re.search(
         r"\{.*\}",
@@ -73,15 +56,72 @@ def clean_json_response(text):
         re.DOTALL
     )
 
-
     if match:
-
         return match.group()
 
-
     return text
-    # =====================================================
-# Tool 1 : Extract Interaction
+
+
+# =====================================================
+# TOOL 1 : VALIDATE INTERACTION
+# =====================================================
+
+def validate_interaction(data: dict):
+
+    errors = []
+
+    required = [
+        "hcp_name",
+        "discussion",
+        "meeting_type",
+        "date",
+        "time"
+    ]
+
+    for field in required:
+
+        value = data.get(field)
+
+        if value is None or str(value).strip() == "":
+            errors.append(f"{field} is missing")
+
+    if errors:
+
+        return {
+            "status": "error",
+            "errors": errors
+        }
+
+    try:
+
+        prompt = VALIDATION_PROMPT.format(
+            interaction=json.dumps(data, indent=2)
+        )
+
+        result = llm.invoke(prompt)
+
+        answer = result.content.strip().lower()
+
+        if "invalid" in answer:
+
+            return {
+                "status": "error",
+                "errors": [
+                    "AI validation failed."
+                ]
+            }
+
+    except Exception as e:
+
+        print("Validation Warning:", e)
+
+    return {
+        "status": "success"
+    }
+
+
+# =====================================================
+# TOOL 2 : EXTRACT INTERACTION
 # =====================================================
 
 def extract_interaction(user_input: str):
@@ -91,82 +131,27 @@ def extract_interaction(user_input: str):
     today = now.strftime("%Y-%m-%d")
     current_time = now.strftime("%H:%M")
 
-
     prompt = EXTRACT_PROMPT.format(
         today=today,
         current_time=current_time,
         discussion=user_input
     )
 
-
     try:
 
         result = llm.invoke(prompt)
 
+        cleaned = clean_json_response(result.content)
 
-        text = result.content
-
-
-        print("========== AI RAW RESPONSE ==========")
-        print(text)
-        print("=====================================")
-
-
-        cleaned_text = clean_json_response(text)
-
-
-        data = json.loads(cleaned_text)
-
-
+        data = json.loads(cleaned)
 
     except Exception as e:
 
+        print("Extraction Error:", e)
 
-        print(
-            "AI EXTRACTION ERROR:",
-            e
-        )
+        data = {}
 
-
-        data = {
-
-            "hcp_name": "",
-
-            "meeting_type": "Meeting",
-
-            "date": today,
-
-            "time": current_time,
-
-            "attendees": "",
-
-            "discussion": user_input,
-
-            "materials_shared": "",
-
-            "samples_distributed": "",
-
-            "sentiment": "Neutral",
-
-            "outcomes": "",
-
-            "follow_up_actions": "",
-
-            "summary": "",
-
-            "follow_up": ""
-
-        }
-
-
-
-    # ============================
-    # DEFAULT VALUES
-    # ============================
-
-
-    default_values = {
-
+    defaults = {
 
         "hcp_name": "",
 
@@ -196,32 +181,19 @@ def extract_interaction(user_input: str):
 
     }
 
-
-
-    for key, value in default_values.items():
+    for key, value in defaults.items():
 
         if key not in data or data[key] is None:
 
             data[key] = value
 
-
-
-    # convert list response to string
-
-    if isinstance(
-        data.get("materials_shared"),
-        list
-    ):
+    if isinstance(data["materials_shared"], list):
 
         data["materials_shared"] = ", ".join(
             data["materials_shared"]
         )
 
-
-    if isinstance(
-        data.get("samples_distributed"),
-        list
-    ):
+    if isinstance(data["samples_distributed"], list):
 
         data["samples_distributed"] = ", ".join(
             data["samples_distributed"]
@@ -229,8 +201,8 @@ def extract_interaction(user_input: str):
 
 
     return data
-    # =====================================================
-# Tool 2 : Save Interaction
+# =====================================================
+# TOOL 3 : SAVE INTERACTION
 # =====================================================
 
 def log_interaction(data: dict):
@@ -242,11 +214,8 @@ def log_interaction(data: dict):
         interaction = Interaction(**data)
 
         db.add(interaction)
-
         db.commit()
-
         db.refresh(interaction)
-
 
         return {
 
@@ -258,16 +227,11 @@ def log_interaction(data: dict):
 
         }
 
-
     except Exception as e:
 
         db.rollback()
 
-        print(
-            "DATABASE ERROR:",
-            e
-        )
-
+        print("DATABASE ERROR:", e)
 
         return {
 
@@ -277,35 +241,35 @@ def log_interaction(data: dict):
 
         }
 
-
     finally:
 
         db.close()
 
 
-
 # =====================================================
-# Tool 3 : Edit Interaction
+# TOOL 4 : EDIT INTERACTION
 # =====================================================
 
 def edit_interaction(
-        interaction_id: int,
-        updates: dict
+    interaction_id: int,
+    updates: dict
 ):
 
     db = get_db()
 
-
     try:
 
         interaction = (
+
             db.query(Interaction)
+
             .filter(
                 Interaction.id == interaction_id
             )
-            .first()
-        )
 
+            .first()
+
+        )
 
         if not interaction:
 
@@ -317,14 +281,9 @@ def edit_interaction(
 
             }
 
-
         for key, value in updates.items():
 
-
-            if hasattr(
-                interaction,
-                key
-            ):
+            if hasattr(interaction, key):
 
                 setattr(
                     interaction,
@@ -332,23 +291,20 @@ def edit_interaction(
                     value
                 )
 
-
         db.commit()
-
         db.refresh(interaction)
-
 
         return {
 
             "status": "success",
 
-            "message": "Interaction updated successfully"
+            "message": "Interaction updated successfully",
+
+            "interaction_id": interaction.id
 
         }
 
-
     except Exception as e:
-
 
         db.rollback()
 
@@ -360,45 +316,42 @@ def edit_interaction(
 
         }
 
-
     finally:
 
         db.close()
 
 
-
 # =====================================================
-# Tool 4 : Search HCP
+# TOOL 5 : SEARCH HCP HISTORY
 # =====================================================
 
 def search_hcp(name: str):
 
     db = get_db()
 
-
     try:
-
 
         results = (
 
             db.query(Interaction)
 
             .filter(
-                Interaction.hcp_name.contains(name)
+                Interaction.hcp_name.ilike(f"%{name}%")
+            )
+
+            .order_by(
+                Interaction.id.desc()
             )
 
             .all()
 
         )
 
-
-        response = []
-
+        history = []
 
         for item in results:
 
-
-            response.append({
+            history.append({
 
                 "id": item.id,
 
@@ -416,33 +369,63 @@ def search_hcp(name: str):
 
                 "summary": item.summary,
 
-                "follow_up": item.follow_up
+                "follow_up": item.follow_up,
+
+                "sentiment": item.sentiment,
+
+                "outcomes": item.outcomes
 
             })
 
+        return history
 
-        return response
+    except Exception as e:
 
+        print("SEARCH ERROR:", e)
 
+        return []
 
     finally:
 
         db.close()
-
-
-
-
 # =====================================================
-# Tool 5 : AI Summary
+# TOOL 6 : AI SUMMARY
 # =====================================================
 
-def summarize_interaction(notes: str):
+def summarize_interaction(
+    notes: str,
+    history: list = None
+):
 
+    history_text = ""
+
+    if history:
+
+        history_text = "\n\nPrevious HCP Interactions:\n"
+
+        for index, visit in enumerate(history[:3], start=1):
+
+            history_text += f"""
+
+Visit {index}
+
+Date: {visit.get('date')}
+
+Meeting Type: {visit.get('meeting_type')}
+
+Discussion: {visit.get('discussion')}
+
+Summary: {visit.get('summary')}
+
+Follow-up: {visit.get('follow_up')}
+
+"""
 
     prompt = SUMMARY_PROMPT.format(
-        discussion=notes
-    )
 
+        discussion=notes + history_text
+
+    )
 
     try:
 
@@ -450,30 +433,47 @@ def summarize_interaction(notes: str):
 
         return result.content.strip()
 
-
     except Exception as e:
 
-        print(
-            "SUMMARY ERROR:",
-            e
-        )
+        print("SUMMARY ERROR:", e)
 
         return ""
 
 
-
-
 # =====================================================
-# Tool 6 : AI Follow-up
+# TOOL 7 : AI FOLLOW-UP
 # =====================================================
 
-def suggest_followup(notes: str):
+def suggest_followup(
+    notes: str,
+    history: list = None
+):
 
+    history_text = ""
+
+    if history:
+
+        history_text = "\n\nPrevious HCP Interactions:\n"
+
+        for index, visit in enumerate(history[:3], start=1):
+
+            history_text += f"""
+
+Visit {index}
+
+Date: {visit.get('date')}
+
+Discussion: {visit.get('discussion')}
+
+Follow-up: {visit.get('follow_up')}
+
+"""
 
     prompt = FOLLOWUP_PROMPT.format(
-        discussion=notes
-    )
 
+        discussion=notes + history_text
+
+    )
 
     try:
 
@@ -481,30 +481,24 @@ def suggest_followup(notes: str):
 
         return result.content.strip()
 
-
     except Exception as e:
 
-        print(
-            "FOLLOWUP ERROR:",
-            e
-        )
+        print("FOLLOWUP ERROR:", e)
 
         return ""
 
 
-
-
 # =====================================================
-# Tool 7 : AI Chat Assistant
+# TOOL 8 : AI CHAT ASSISTANT
 # =====================================================
 
 def chat_assistant(query: str):
 
-
     prompt = CHAT_PROMPT.format(
-        query=query
-    )
 
+        query=query
+
+    )
 
     try:
 
@@ -512,14 +506,8 @@ def chat_assistant(query: str):
 
         return result.content.strip()
 
-
     except Exception as e:
 
-
-        print(
-            "CHAT ERROR:",
-            e
-        )
-
+        print("CHAT ERROR:", e)
 
         return "Unable to process request."

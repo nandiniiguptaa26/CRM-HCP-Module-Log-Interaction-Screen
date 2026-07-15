@@ -144,11 +144,13 @@ def ai_log(data: dict):
 
     result = graph.invoke({
 
-        "action": "extract",
-
-        "input": {
-            "query": data["query"]
-        }
+         "action": "extract",
+    "input": {
+        "query": data["query"]
+    },
+    "output": {},
+    "history": [],
+    "errors": []
 
     })
 
