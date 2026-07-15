@@ -32,6 +32,7 @@ function InteractionForm({
   handleChange,
   saveInteraction,
   sendToAI,
+  startVoiceRecording,
 }) {
 
   return (
@@ -222,7 +223,7 @@ function InteractionForm({
       <Link
         component="button"
         underline="none"
-        onClick={sendToAI}
+        onClick={startVoiceRecording}
         sx={{
           display: "flex",
           alignItems: "center",
